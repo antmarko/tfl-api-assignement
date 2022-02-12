@@ -1,24 +1,16 @@
-from hashlib import new
 import imp
+import psycopg2
+from time import sleep
+from psycopg2.extras import RealDictCursor
+from hashlib import new
 from typing import Optional
 from fastapi import Body, FastAPI, Response, status, HTTPException
 from pydantic import BaseModel, root_validator, validator
 from datetime import datetime
 from random import randrange
 
+
 app = FastAPI()
-
-my_tasks = []
-
-def find_task(id):
-    for t in my_tasks:
-        if t['id'] == id:
-            return t
-
-def find_index_task(id):
-    for i,t in enumerate(my_tasks):
-        if t['id'] == id:
-            return i
 
 class Task(BaseModel):
     scheduler_time: Optional[datetime] = None
@@ -63,50 +55,78 @@ class UpdateTask(Task):
             raise ValueError('Should provide update value for at least one field')
         return v
 
+def create_dynamic_update_query(task: UpdateTask):
+    task_dict = task.dict()
+    update_fields = [field for field in task_dict.keys() if task_dict[field]]
+    update_values = [task_dict[key] for key in update_fields]
+    dynamic_query = """UPDATE tasks SET %s WHERE ID = %s  RETURNING *""" \
+                    % (', '.join("%s = %%s" % u for u in update_fields), '%s')
+    return dynamic_query, update_values
+
+while True:
+    try:
+        conn = psycopg2.connect(
+            host='localhost', 
+            database='fastapi', 
+            user='postgres', 
+            password='postgres',
+            cursor_factory=RealDictCursor)
+        cursor = conn.cursor()
+        print("Succesfully connected to database")
+        break
+    except Exception as error:
+        print("Failed to connect to the database")
+        print("Error: ", error)
+    sleep(5)
+
 @app.get("/tasks")
 async def get_tasks():
-    return {"data": my_tasks}
+    cursor.execute("""SELECT * FROM tasks""")
+    tasks = cursor.fetchall()
+    return {"data": tasks}
 
 @app.get("/tasks/{id}")
 async def get_task(id: int, response: Response):
-    task = find_task(id)
-    if not task:
+    cursor.execute("""SELECT * FROM tasks WHERE ID = %s""", (id,))
+    returned_task = cursor.fetchone()
+    if not returned_task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Task with id: {id} not found")
-    return {"task_details": task}
+    return {"task_details": returned_task}
 
 @app.post("/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(new_task: Task):
-    # validate date format: Done in pydantic
-    # split string containing the lines if more than one: Done in pydantic
-    # validate that the line(s) are valid: Done in pydantic
-    new_task_dict = new_task.dict()
-    new_task_dict['id'] = randrange(1, 10000000)
-    my_tasks.append(new_task_dict)
-    return new_task_dict
+    if not new_task.scheduler_time:
+        cursor.execute("""INSERT INTO tasks (lines) VALUES (%s) RETURNING *""",
+        (new_task.lines,))
+    else:
+        cursor.execute("""INSERT INTO tasks (scheduler_time, lines) VALUES (%s, %s) RETURNING *""",
+        (new_task.scheduler_time, new_task.lines))        
+    returned_task = cursor.fetchone()
+    conn.commit()
+    return {"data": returned_task}
 
 @app.delete("/tasks/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(id: int):
-    index = find_index_task(id)
-    if index == None:
+    cursor.execute("""DELETE FROM tasks WHERE ID = %s  RETURNING *""", (id,))
+    returned_task = cursor.fetchone()
+    conn.commit()
+    if returned_task == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                              detail=f"Task with id: {id} doesnt exist")
-    my_tasks.pop(index)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.patch("/tasks/{id}")
 async def update_task(id: int, task: UpdateTask):
-    index = find_index_task(id)
-    if index == None:
+    # dynamic update query based on given fields
+    dynamic_query, update_values = create_dynamic_update_query(task)
+    cursor.execute(dynamic_query, (*update_values, id))
+    returned_task = cursor.fetchone()
+    conn.commit()
+    if returned_task == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                              detail=f"Task with id: {id} doesnt exist")
-    if my_tasks[index]['scheduler_time'] <= datetime.now():
+    if returned_task['scheduler_time'] <= datetime.now():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                              detail=f"Task with id: {id} is already executed")
-    stored_task_data = my_tasks[index]
-    stored_task_model = Task(**stored_task_data)
-    update_data = task.dict(exclude_unset=True)
-    update_data['id'] = id
-    updated_task = stored_task_model.copy(update=update_data)
-    my_tasks[index] = updated_task.dict()
-    return {"data": my_tasks[index]}
+    return {"data": returned_task}
