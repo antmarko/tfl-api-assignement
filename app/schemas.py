@@ -2,7 +2,7 @@ from pydantic import BaseModel, root_validator, validator
 from typing import Optional
 from datetime import datetime
 
-class Task(BaseModel):
+class TaskBase(BaseModel):
     scheduler_time: Optional[datetime] = None
     lines: str
 
@@ -37,10 +37,22 @@ class Task(BaseModel):
             raise ValueError('Not valid lines are found')
         return ','.join(payload_lines)
 
-class UpdateTask(Task):
+class TaskCreate(TaskBase):
+    pass
+
+class TaskUpdate(TaskBase):
     lines: Optional[str] = None
     @root_validator
     def any_of(cls, v):
         if not any(v.values()):
             raise ValueError('Should provide update value for at least one field')
         return v
+
+class TaskResponse(BaseModel):
+    id: int
+    created_at: datetime
+    scheduler_time: datetime
+    lines: str
+
+    class Config:
+        orm_mode = True
