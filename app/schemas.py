@@ -1,6 +1,12 @@
 from pydantic import BaseModel, root_validator, validator
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
+
+class ResultOut(BaseModel):
+    result_description: str
+
+    class Config:
+        orm_mode = True
 
 class TaskBase(BaseModel):
     scheduler_time: Optional[datetime] = None
@@ -34,7 +40,7 @@ class TaskBase(BaseModel):
         ]
         payload_lines = list(map(str.strip, value.split(',')))
         if len(set(payload_lines) - set(valid_lines)) != 0:
-            raise ValueError('Not valid lines are found')
+            raise ValueError('Non valid lines are found')
         return ','.join(payload_lines)
 
 class TaskCreate(TaskBase):
@@ -49,10 +55,11 @@ class TaskUpdate(TaskBase):
         return v
 
 class TaskResponse(BaseModel):
-    id: int
+    id: str
     created_at: datetime
     scheduler_time: datetime
     lines: str
+    results: List[ResultOut]
 
     class Config:
         orm_mode = True
