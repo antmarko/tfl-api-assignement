@@ -1,6 +1,7 @@
 from pydantic import BaseModel, root_validator, validator
 from typing import List, Optional
 from datetime import datetime
+from .config import settings
 
 class ResultOut(BaseModel):
     result_description: str
@@ -25,19 +26,7 @@ class TaskBase(BaseModel):
     @validator("lines")
     def parse_lines(cls, value):
         # to be env var or get the list automatic from the tfl api
-        valid_lines = [
-            "bakerloo",
-            "central",
-            "circle",
-            "district",
-            "hammersmith-city",
-            "jubilee",
-            "metropolitan",
-            "northern",
-            "piccadilly",
-            "victoria",
-            "waterloo-city"
-        ]
+        valid_lines = settings.valid_lines
         payload_lines = list(map(str.strip, value.split(',')))
         if len(set(payload_lines) - set(valid_lines)) != 0:
             raise ValueError('Non valid lines are found')

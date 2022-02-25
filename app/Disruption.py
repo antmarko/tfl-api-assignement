@@ -3,11 +3,12 @@ import requests
 from sqlalchemy.orm import Session
 from sqlalchemy.engine.base import Engine
 from . import models
+from .config import settings
 
 class Disruption(object):
     @staticmethod
     def get_disruption_results(lines: str)->List[str]:
-        response = requests.get(f"https://api.tfl.gov.uk/Line/{lines}/Disruption")
+        response = requests.get(f"{settings.tfl_line_endpoint_url}{lines}{settings.disruption_endpoint_suffix}")
         response_json = response.json()
         result = [elem['description'] for elem in response_json]
         return list(set(result))
