@@ -1,0 +1,29 @@
+version: "3"
+services:
+    api:
+        build: .
+        depends_on:
+            - postgres
+        ports:
+            - 8000:8000
+        environment:
+            - DATABASE_HOSTNAME=postgres
+            - DATABASE_PORT=5432
+            - DATABASE_PASSWORD=postgres
+            - DATABASE_NAME=fastapi
+            - DATABASE_USERNAME=postgres
+            - VALID_LINES=["bakerloo","central","circle","district","hammersmith-city","jubilee","metropolitan","northern","piccadilly","victoria","waterloo-city"]
+            - TFL_LINE_ENDPOINT_URL=https://api.tfl.gov.uk/Line/
+            - DISRUPTION_ENDPOINT_SUFFIX=/Disruption
+    
+    postgres:
+        image: postgres
+        environment:
+            - POSTGRES_PASSWORD=postgres
+            - POSTGRES_DB=fastapi
+        
+        volumes:
+            - postgres-db:/var/lib/postgresql/data
+
+volumes: 
+    postgres-db:
